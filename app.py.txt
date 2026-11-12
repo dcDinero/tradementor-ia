@@ -1,0 +1,36 @@
+import streamlit as st
+from PIL import Image
+
+# Configuración visual de la página
+st.set_page_config(page_title="TradeMentor IA", page_icon="??", layout="centered")
+
+st.title("?? TradeMentor IA")
+st.subheader("Tu mentor de análisis técnico y gestión de riesgo con Gemini")
+
+# Barra lateral para configurar la API Key
+st.sidebar.header("Configuración")
+api_key = st.sidebar.text_input("Ingresa tu API Key de Gemini", type="password")
+
+# Subir la captura del gráfico de trading
+uploaded_file = st.file_uploader("Sube la captura de tu gráfico (TradingView, MetaTrader, etc.)", type=["png", "jpg", "jpeg"])
+
+if uploaded_file is not None:
+    # Mostrar la imagen en la pantalla
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Gráfico cargado para análisis", use_container_width=True)
+    
+    # Opciones de análisis técnico
+    activo = st.text_input("Activo o Par (ej. EURUSD, XAUUSD)", value="EURUSD")
+    estrategia = st.selectbox("Enfoque de Análisis", [
+        "Candle Range Theory (CRT)", 
+        "Zonas de Liquidez y Mechas", 
+        "Ruptura de Rangos y Estructura"
+    ])
+    
+    if st.button("Analizar Gráfico con Gemini Vision"):
+        if not api_key:
+            st.error("Por favor, ingresa tu API Key de Gemini en la barra lateral izquierda.")
+        else:
+            with st.spinner("Analizando mechas, zonas de liquidez y estructura del mercado..."):
+                # Aquí conectaremos la inteligencia artificial para leer la imagen
+                st.success("¡Imagen recibida! El módulo de análisis visual está listo para conectarse.")
