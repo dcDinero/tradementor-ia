@@ -1,36 +1,36 @@
 import streamlit as st
 from PIL import Image
 
-# ConfiguraciÛn visual de la p·gina
+# Configuraci√≥n visual de la p√°gina
 st.set_page_config(page_title="TradeMentor IA", page_icon="??", layout="centered")
 
 st.title("?? TradeMentor IA")
-st.subheader("Tu mentor de an·lisis tÈcnico y gestiÛn de riesgo con Gemini")
+st.subheader("Tu mentor de an√°lisis t√©cnico y gesti√≥n de riesgo con Gemini")
 
 # Barra lateral para configurar la API Key
-st.sidebar.header("ConfiguraciÛn")
+st.sidebar.header("Configuraci√≥n")
 api_key = st.sidebar.text_input("Ingresa tu API Key de Gemini", type="password")
 
-# Subir la captura del gr·fico de trading
-uploaded_file = st.file_uploader("Sube la captura de tu gr·fico (TradingView, MetaTrader, etc.)", type=["png", "jpg", "jpeg"])
+# Subir la captura del gr√°fico de trading
+uploaded_file = st.file_uploader("Sube la captura de tu gr√°fico (TradingView, MetaTrader, etc.)", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
     # Mostrar la imagen en la pantalla
     image = Image.open(uploaded_file)
-    st.image(image, caption="Gr·fico cargado para an·lisis", use_container_width=True)
+    st.image(image, caption="Gr√°fico cargado para an√°lisis", use_container_width=True)
     
-    # Opciones de an·lisis tÈcnico
+    # Opciones de an√°lisis t√©cnico
     activo = st.text_input("Activo o Par (ej. EURUSD, XAUUSD)", value="EURUSD")
-    estrategia = st.selectbox("Enfoque de An·lisis", [
+    estrategia = st.selectbox("Enfoque de An√°lisis", [
         "Candle Range Theory (CRT)", 
         "Zonas de Liquidez y Mechas", 
         "Ruptura de Rangos y Estructura"
     ])
     
-    if st.button("Analizar Gr·fico con Gemini Vision"):
+    if st.button("Analizar Gr√°fico con Gemini Vision"):
         if not api_key:
             st.error("Por favor, ingresa tu API Key de Gemini en la barra lateral izquierda.")
         else:
             with st.spinner("Analizando mechas, zonas de liquidez y estructura del mercado..."):
-                # AquÌ conectaremos la inteligencia artificial para leer la imagen
-                st.success("°Imagen recibida! El mÛdulo de an·lisis visual est· listo para conectarse.")
+                # Aqu√≠ conectaremos la inteligencia artificial para leer la imagen
+                st.success("¬°Imagen recibida! El m√≥dulo de an√°lisis visual est√° listo para conectarse.")
