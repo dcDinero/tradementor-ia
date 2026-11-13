@@ -4,7 +4,7 @@ import streamlit as st
 from PIL import Image
 from google import genai
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.8-flash"
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 2
 
