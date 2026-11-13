@@ -2,6 +2,8 @@ import streamlit as st
 from PIL import Image
 from google import genai
 
+MODEL_NAME = "gemini-3.8-flash"
+
 # ---------------------------------------------------------------------------
 # Configuración de la página
 # ---------------------------------------------------------------------------
@@ -27,6 +29,7 @@ with st.sidebar:
         help="Tu clave se usa solo en esta sesión y no se guarda en el servidor.",
     )
     st.caption("Consigue una clave gratuita en [Google AI Studio](https://aistudio.google.com/apikey).")
+    st.caption(f"Modelo en uso: `{MODEL_NAME}`")
 
     st.divider()
     st.markdown(
@@ -132,7 +135,7 @@ if analyze:
             with st.spinner("Analizando estructura de mercado, liquidez y price action..."):
                 client = genai.Client(api_key=api_key)
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model=MODEL_NAME,
                     contents=[image, build_prompt(user_prompt)],
                 )
             report = (response.text or "").strip()
@@ -150,6 +153,11 @@ if analyze:
                 st.error("La API Key no es válida o no tiene permisos para Gemini. Verifícala en la barra lateral.")
             elif "quota" in message.lower() or "429" in message:
                 st.error("Se agotó la cuota de la API Key. Revisa tu plan en Google AI Studio.")
+            elif "not found" in message.lower() or "404" in message:
+                st.error(
+                    f"El modelo `{MODEL_NAME}` no está disponible para esta API Key. "
+                    "Verifica que la clave tenga acceso a Gemini 3.8 Flash en Google AI Studio."
+                )
             else:
                 st.error(f"No se pudo completar el análisis: {message}")
 elif image is None:
