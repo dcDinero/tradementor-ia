@@ -1,10 +1,12 @@
+import base64
 import time
 
+import anthropic
 import streamlit as st
 from PIL import Image
-from google import genai
 
-MODEL_NAME = "gemini-3.8-flash"
+MODEL_NAME = "claude-sonnet-5-5"
+MAX_TOKENS = 2048
 MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 2
 
@@ -19,7 +21,7 @@ st.set_page_config(
 )
 
 st.title("📈 TradeMentor IA")
-st.caption("Análisis técnico de price action y niveles clave con Gemini Vision.")
+st.caption("Análisis técnico de price action y niveles clave con Claude Vision.")
 
 # ---------------------------------------------------------------------------
 # Barra lateral: credenciales y guía
@@ -27,19 +29,19 @@ st.caption("Análisis técnico de price action y niveles clave con Gemini Vision
 with st.sidebar:
     st.header("⚙️ Configuración")
     api_key = st.text_input(
-        "Gemini API Key",
+        "Anthropic API Key",
         type="password",
-        placeholder="AIza...",
+        placeholder="sk-ant-...",
         help="Tu clave se usa solo en esta sesión y no se guarda en el servidor.",
     )
-    st.caption("Consigue una clave gratuita en [Google AI Studio](https://aistudio.google.com/apikey).")
+    st.caption("Consigue una clave en [Anthropic Console](https://console.anthropic.com/settings/keys).")
     st.caption(f"Modelo en uso: `{MODEL_NAME}`")
 
     st.divider()
     st.markdown(
         """
         **¿Cómo usar TradeMentor IA?**
-        1. Pega tu API Key de Google Gemini.
+        1. Pega tu API Key de Anthropic.
         2. Sube la captura de tu gráfico (TradingView, MetaTrader, etc.).
         3. Añade contexto: activo, temporalidad o la duda que tengas.
         4. Pulsa **Analizar Gráfico**.
@@ -68,7 +70,12 @@ with col_context:
     )
 
 image = None
+image_bytes = None
+image_media_type = None
+
 if uploaded_file is not None:
+    image_bytes = uploaded_file.getvalue()
+    image_media_type = uploaded_file.type if uploaded_file.type in ("image/png", "image/jpeg") else "image/jpeg"
     image = Image.open(uploaded_file)
     if image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
@@ -119,53 +126,72 @@ Reglas:
 """
 
 
-def build_prompt(context: str) -> str:
+def build_user_text(context: str) -> str:
     context = (context or "").strip()
     if not context:
-        return PROMPT_BASE
-    return f"{PROMPT_BASE}\nContexto adicional del usuario: {context}"
+        return "Analiza el gráfico adjunto y entrega el reporte técnico."
+    return f"Analiza el gráfico adjunto. Contexto adicional del usuario: {context}"
 
 
-def is_service_unavailable(exc: Exception) -> bool:
-    """Detecta errores 503 / UNAVAILABLE de la API de Gemini."""
-    if getattr(exc, "code", None) == 503:
+def is_transient_error(exc: Exception) -> bool:
+    """Detecta saturación o errores temporales de la API de Anthropic."""
+    if getattr(exc, "status_code", None) in (429, 500, 502, 503, 529):
         return True
     message = str(exc).upper()
-    return "503" in message or "UNAVAILABLE" in message
+    return "503" in message or "529" in message or "OVERLOADED" in message
 
 
-def analyze_chart(client, image, prompt: str):
-    """Llama a Gemini y reintenta automáticamente si la API responde 503."""
+def analyze_chart(client, image_bytes: bytes, media_type: str, user_text: str):
+    """Envía la imagen a Claude y reintenta si la API está saturada."""
+    content = [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,
+                "data": base64.b64encode(image_bytes).decode("utf-8"),
+            },
+        },
+        {"type": "text", "text": user_text},
+    ]
+
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            return client.models.generate_content(
+            return client.messages.create(
                 model=MODEL_NAME,
-                contents=[image, prompt],
+                max_tokens=MAX_TOKENS,
+                system=PROMPT_BASE,
+                messages=[{"role": "user", "content": content}],
             )
         except Exception as exc:
-            if attempt == MAX_RETRIES or not is_service_unavailable(exc):
+            if attempt == MAX_RETRIES or not is_transient_error(exc):
                 raise
             st.info(
-                f"Gemini no está disponible temporalmente (503). "
+                f"Claude está con alta demanda temporalmente. "
                 f"Reintentando en {RETRY_DELAY_SECONDS}s ({attempt}/{MAX_RETRIES})…"
             )
             time.sleep(RETRY_DELAY_SECONDS)
 
 
 # ---------------------------------------------------------------------------
-# Análisis con Gemini
+# Análisis con Claude
 # ---------------------------------------------------------------------------
 if analyze:
     if not api_key:
-        st.error("Ingresa tu API Key de Gemini en la barra lateral para continuar.")
+        st.error("Ingresa tu API Key de Anthropic en la barra lateral para continuar.")
     elif image is None:
         st.warning("Sube primero una imagen de tu gráfico.")
     else:
         try:
-            with st.spinner("Analizando estructura de mercado, liquidez y price action..."):
-                client = genai.Client(api_key=api_key)
-                response = analyze_chart(client, image, build_prompt(user_prompt))
-            report = (response.text or "").strip()
+            with st.spinner("Analizando estructura de mercado, liquidez y price action con Claude..."):
+                client = anthropic.Anthropic(api_key=api_key)
+                response = analyze_chart(
+                    client, image_bytes, image_media_type, build_user_text(user_prompt)
+                )
+
+            report = "".join(
+                block.text for block in response.content if getattr(block, "type", None) == "text"
+            ).strip()
 
             if not report:
                 st.error("El modelo no devolvió contenido. Intenta de nuevo con otra imagen.")
@@ -174,23 +200,22 @@ if analyze:
                 with st.container(border=True):
                     st.markdown("### 📊 Reporte de TradeMentor IA")
                     st.markdown(report)
+        except anthropic.AuthenticationError:
+            st.error("La API Key de Anthropic no es válida. Verifícala en la barra lateral.")
+        except anthropic.RateLimitError:
+            st.error("Se alcanzó el límite de peticiones de tu API Key. Espera un momento y reintenta.")
+        except anthropic.NotFoundError:
+            st.error(
+                f"El modelo `{MODEL_NAME}` no está disponible para esta API Key. "
+                "Verifica el acceso en Anthropic Console."
+            )
         except Exception as exc:
-            message = str(exc)
-            if "API_KEY" in message.upper() or "PERMISSION" in message.upper() or "401" in message:
-                st.error("La API Key no es válida o no tiene permisos para Gemini. Verifícala en la barra lateral.")
-            elif "quota" in message.lower() or "429" in message:
-                st.error("Se agotó la cuota de la API Key. Revisa tu plan en Google AI Studio.")
-            elif is_service_unavailable(exc):
+            if is_transient_error(exc):
                 st.error(
-                    "Gemini no respondió tras varios intentos (503). "
-                    "Es una caída temporal del servicio: espera un momento y vuelve a intentarlo."
-                )
-            elif "not found" in message.lower() or "404" in message:
-                st.error(
-                    f"El modelo `{MODEL_NAME}` no está disponible para esta API Key. "
-                    "Verifica que la clave tenga acceso a Gemini 3.8 Flash en Google AI Studio."
+                    "Claude no respondió tras varios intentos por alta demanda. "
+                    "Es temporal: espera un momento y vuelve a intentarlo."
                 )
             else:
-                st.error(f"No se pudo completar el análisis: {message}")
+                st.error(f"No se pudo completar el análisis: {exc}")
 elif image is None:
     st.info("👆 Carga una imagen de tu gráfico para comenzar el análisis técnico.")
