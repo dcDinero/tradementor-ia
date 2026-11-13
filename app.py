@@ -1,8 +1,12 @@
+import time
+
 import streamlit as st
 from PIL import Image
 from google import genai
 
 MODEL_NAME = "gemini-3.8-flash"
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 2
 
 # ---------------------------------------------------------------------------
 # Configuración de la página
@@ -122,6 +126,32 @@ def build_prompt(context: str) -> str:
     return f"{PROMPT_BASE}\nContexto adicional del usuario: {context}"
 
 
+def is_service_unavailable(exc: Exception) -> bool:
+    """Detecta errores 503 / UNAVAILABLE de la API de Gemini."""
+    if getattr(exc, "code", None) == 503:
+        return True
+    message = str(exc).upper()
+    return "503" in message or "UNAVAILABLE" in message
+
+
+def analyze_chart(client, image, prompt: str):
+    """Llama a Gemini y reintenta automáticamente si la API responde 503."""
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return client.models.generate_content(
+                model=MODEL_NAME,
+                contents=[image, prompt],
+            )
+        except Exception as exc:
+            if attempt == MAX_RETRIES or not is_service_unavailable(exc):
+                raise
+            st.info(
+                f"Gemini no está disponible temporalmente (503). "
+                f"Reintentando en {RETRY_DELAY_SECONDS}s ({attempt}/{MAX_RETRIES})…"
+            )
+            time.sleep(RETRY_DELAY_SECONDS)
+
+
 # ---------------------------------------------------------------------------
 # Análisis con Gemini
 # ---------------------------------------------------------------------------
@@ -134,10 +164,7 @@ if analyze:
         try:
             with st.spinner("Analizando estructura de mercado, liquidez y price action..."):
                 client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model=MODEL_NAME,
-                    contents=[image, build_prompt(user_prompt)],
-                )
+                response = analyze_chart(client, image, build_prompt(user_prompt))
             report = (response.text or "").strip()
 
             if not report:
@@ -153,6 +180,11 @@ if analyze:
                 st.error("La API Key no es válida o no tiene permisos para Gemini. Verifícala en la barra lateral.")
             elif "quota" in message.lower() or "429" in message:
                 st.error("Se agotó la cuota de la API Key. Revisa tu plan en Google AI Studio.")
+            elif is_service_unavailable(exc):
+                st.error(
+                    "Gemini no respondió tras varios intentos (503). "
+                    "Es una caída temporal del servicio: espera un momento y vuelve a intentarlo."
+                )
             elif "not found" in message.lower() or "404" in message:
                 st.error(
                     f"El modelo `{MODEL_NAME}` no está disponible para esta API Key. "
