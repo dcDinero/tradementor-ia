@@ -66,7 +66,7 @@ if uploaded_file is not None:
 
                     # Llamada a Gemini Flash (modelo multimodal optimizado para visión)
                     response = client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-3.8-flash',
                         contents=[image, full_prompt]
                     )
 
